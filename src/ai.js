@@ -19,11 +19,31 @@ const NO_CONFIG_MSG =
 
 // --- Model (lazy, hanya bila terkonfigurasi) --------------------------------
 
+// Batas waktu panggilan model: tanpa ini, generateContent yang menggantung
+// (mis. jaringan ke endpoint AI macet) membuat tombol tetap disabled dan
+// status "Membaca struk…" selamanya tanpa error apa pun.
+const SCAN_TIMEOUT_MS = 120_000;
+const CHAT_TIMEOUT_MS = 90_000;
+
+function withTimeout(promise, ms, message) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 // Structured output: responseSchema DIDUKUNG SDK yang terinstall
 // (firebase 13.4.0 — diverifikasi dari node_modules: class Schema dengan
 // helper statis object/string/integer/number/array). Dipakai di receiptModel
 // agar model menjawab JSON sesuai skema; parsing manual tetap dipertahankan
 // sebagai pengaman bila teks keluar dari skema.
+// PENTING (QA 20 Nov 2026): pada mode hybrid, generationConfig TIDAK BOLEH
+// di top-level — SDK v13 mengabaikannya dan memberi warning
+// ("...must be done separately in inCloudParams and onDeviceParams").
+// Karena itu responseMimeType + responseSchema ditaruh di inCloudParams.
+// Model cloud default SDK v13 = gemini-3.5-flash-lite (terverifikasi dari
+// URL request yang diabort SDK saat timeout di Brave headless).
 const RECEIPT_SCHEMA = Schema.object({
   description: "Hasil ekstraksi struk belanja Indonesia.",
   properties: {
@@ -64,9 +84,15 @@ function getReceiptModel() {
     receiptModel = getGenerativeModel(ai, {
       mode: InferenceMode.PREFER_ON_DEVICE,
       // Model cloud fallback: default SDK v13 = gemini-3.5-flash-lite.
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: RECEIPT_SCHEMA,
+      // Nama model WAJIB ditulis eksplisit di sini: bila inCloudParams ada
+      // tapi tanpa `model`, SDK throw "Must provide a model name"
+      // (default hanya dipakai bila inCloudParams tidak ada sama sekali).
+      inCloudParams: {
+        model: "gemini-3.5-flash-lite",
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: RECEIPT_SCHEMA,
+        },
       },
     });
   }
@@ -88,23 +114,55 @@ function getCloudModel() {
 // --- Setup model on-device --------------------------------------------------
 
 let deviceReady = false;
+let deviceAvailability = null; // 'available' | 'downloading' | 'downloadable' | 'unavailable' | null (tak diketahui)
+
+/**
+ * Cek ketersediaan Prompt API (Gemini Nano) secara jujur bila browser
+ * menyediakannya. Mengembalikan null bila API tidak ada (tidak diketahui).
+ * PENTING: initializeDeviceModel() SDK bisa resolve "ready" walau on-device
+ * sebenarnya tidak tersedia (terbukti di Brave headless: availability()
+ * = "unavailable" tapi setup tetap resolve) — jadi klaim "siap" HANYA boleh
+ * ditampilkan bila availability() menyatakan available/downloading.
+ */
+async function checkOnDeviceAvailability() {
+  try {
+    const LM = globalThis.LanguageModel;
+    if (!LM || typeof LM.availability !== "function") return null;
+    const status = await LM.availability();
+    deviceAvailability = status;
+    return status;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * WAJIB dipanggil setelah/di atas interaksi user (klik tombol) dan SEBELUM
  * generateContent() pertama. Mengunduh model on-device bila belum ada.
  * @param {(pct: number) => void} [onProgress] — progres 0..100.
- * @returns {Promise<{status: 'ready'|'no-config'}>}
+ * @returns {Promise<{status: 'ready'|'downloading'|'unavailable'|'no-config', availability: string|null}>}
  * @throws Error berbahasa Indonesia bila unduhan/setup gagal.
  */
 export async function setupDeviceModel(onProgress) {
   const model = getReceiptModel();
-  if (!model) return { status: "no-config" };
+  if (!model) return { status: "no-config", availability: null };
+  const availability = await checkOnDeviceAvailability();
+  if (availability === "unavailable") {
+    // JANGAN klaim siap: perangkat ini tidak bisa menjalankan model on-device.
+    // Scan tetap bisa jalan lewat cloud (PREFER_ON_DEVICE fallback).
+    deviceReady = false;
+    return { status: "unavailable", availability };
+  }
   try {
     await model.initializeDeviceModel((val) => {
       if (onProgress) onProgress(Math.round(val * 10000) / 100);
     });
     deviceReady = true;
-    return { status: "ready" };
+    const status =
+      availability === "downloading" || availability === "downloadable"
+        ? "downloading"
+        : "ready";
+    return { status, availability };
   } catch (err) {
     throw new Error(
       "Gagal menyiapkan model perangkat: " +
@@ -114,9 +172,13 @@ export async function setupDeviceModel(onProgress) {
   }
 }
 
-/** @returns {{configured: boolean, ready: boolean}} */
+/** @returns {{configured: boolean, ready: boolean, availability: string|null}} */
 export function getDeviceStatus() {
-  return { configured: getAIClient() !== null, ready: deviceReady };
+  return {
+    configured: getAIClient() !== null,
+    ready: deviceReady,
+    availability: deviceAvailability,
+  };
 }
 
 // --- Scan struk -------------------------------------------------------------
@@ -201,7 +263,11 @@ export async function scanReceipt(file) {
   const imagePart = await fileToInlineData(file);
   let result;
   try {
-    result = await model.generateContent([RECEIPT_PROMPT, imagePart]);
+    result = await withTimeout(
+      model.generateContent([RECEIPT_PROMPT, imagePart]),
+      SCAN_TIMEOUT_MS,
+      "Waktu scan habis (120 detik) — periksa koneksimu, lalu coba lagi.",
+    );
   } catch (err) {
     throw new Error("Gagal membaca struk: " + (err?.message || "model tidak merespons"));
   }
@@ -215,7 +281,11 @@ export async function scanReceipt(file) {
     const cloud = getCloudModel();
     if (cloud) {
       try {
-        const cloudResult = await cloud.generateContent([RECEIPT_PROMPT, imagePart]);
+        const cloudResult = await withTimeout(
+          cloud.generateContent([RECEIPT_PROMPT, imagePart]),
+          SCAN_TIMEOUT_MS,
+          "Waktu retry cloud habis (120 detik).",
+        );
         const cloudData = normalizeReceipt(parseJsonRobust(cloudResult.response.text()));
         if (cloudData) {
           data = cloudData;
@@ -270,7 +340,11 @@ Jawab langsung pertanyaan di atas berdasarkan konteks buku kas. Bila data tidak 
 
   let result;
   try {
-    result = await model.generateContent(prompt);
+    result = await withTimeout(
+      model.generateContent(prompt),
+      CHAT_TIMEOUT_MS,
+      "Waktu menjawab habis (90 detik) — periksa koneksimu, lalu coba lagi.",
+    );
   } catch (err) {
     throw new Error("Gagal menjawab pertanyaan: " + (err?.message || "model tidak merespons"));
   }

@@ -28,27 +28,24 @@ export const isFirebaseConfigured = Boolean(
 export const firebaseApp = isFirebaseConfigured ? initializeApp(firebaseConfig) : null;
 
 // App Check — hanya bila terkonfigurasi. Debug token DEV harus diset
-// SEBELUM initializeAppCheck. ReCaptchaV3Provider dipakai HANYA bila site
-// key terisi; jangan pernah construct provider dengan key kosong.
+// SEBELUM initializeAppCheck. Bila VITE_FIREBASE_APPCHECK_DEBUG_TOKEN
+// terisi (token debug yang sudah didaftarkan di console), token itu yang
+// dipakai; bila kosong, SDK generate token baru dan menampilkannya di
+// console (daftarkan dulu di console sebelum dipakai). Dalam mode debug,
+// getToken() memakai jalur debug dan provider tidak pernah dipanggil —
+// jadi site key reCAPTCHA hanya dibutuhkan untuk produksi.
 export let appCheck = null;
 if (isFirebaseConfigured) {
   const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
-  if (siteKey) {
-    if (import.meta.env.DEV) {
-      // Token debug tampil di console browser; daftarkan di Firebase console
-      // > Security > App Check > Apps > Manage debug tokens.
-      self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
-    }
+  const debugToken = import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG_TOKEN;
+  if (import.meta.env.DEV) {
+    self.FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken || true;
+  }
+  if (siteKey || import.meta.env.DEV) {
     appCheck = initializeAppCheck(firebaseApp, {
-      provider: new ReCaptchaV3Provider(siteKey),
+      provider: new ReCaptchaV3Provider(siteKey || "debug"),
       isTokenAutoRefreshEnabled: true,
     });
-  } else if (import.meta.env.DEV) {
-    console.warn(
-      "StrukKu: App Check dilewati — VITE_RECAPTCHA_SITE_KEY kosong. " +
-        "Isi site key reCAPTCHA v3 di .env, atau daftarkan debug token di Firebase console " +
-        "bila App Check di-enforce untuk project ini.",
-    );
   } else {
     console.warn(
       "StrukKu: App Check tidak aktif — VITE_RECAPTCHA_SITE_KEY kosong. " +

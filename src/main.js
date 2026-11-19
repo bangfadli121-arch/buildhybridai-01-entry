@@ -194,17 +194,35 @@ async function onSetupModel() {
     return;
   }
   try {
-    await ai.setupDeviceModel((pct) => {
+    const result = await ai.setupDeviceModel((pct) => {
       const p = Math.max(0, Math.min(100, num(pct)));
       $("setupProgressBar").style.width = `${p}%`;
       $("setupProgressText").textContent = `${p}%`;
       $("setupStatus").textContent = `Menyiapkan model perangkat… ${p}%`;
     });
-    deviceReady = true;
-    $("setupStatus").textContent = "Model perangkat siap — scan bisa jalan offline.";
-    $("deviceBadge").textContent = "Model perangkat: siap";
-    $("deviceBadge").className = "badge badge-device";
-    toast("Model perangkat siap.");
+    const status = result && result.status ? result.status : "ready";
+    if (status === "unavailable") {
+      // Jujur: Prompt API menyatakan on-device tidak tersedia di browser ini.
+      deviceReady = false;
+      $("setupStatus").textContent =
+        "Model perangkat tidak tersedia di browser ini — scan akan memakai cloud bila ada internet.";
+      $("deviceBadge").textContent = "Model perangkat: tidak tersedia";
+      $("deviceBadge").className = "badge badge-muted";
+      toast("Model perangkat tidak tersedia — pakai cloud.");
+    } else if (status === "downloading") {
+      deviceReady = true;
+      $("setupStatus").textContent =
+        "Model perangkat sedang diunduh — scan pertama mungkin lambat, selanjutnya offline.";
+      $("deviceBadge").textContent = "Model perangkat: mengunduh";
+      $("deviceBadge").className = "badge badge-device";
+      toast("Model perangkat sedang diunduh.");
+    } else {
+      deviceReady = true;
+      $("setupStatus").textContent = "Model perangkat siap — scan bisa jalan offline.";
+      $("deviceBadge").textContent = "Model perangkat: siap";
+      $("deviceBadge").className = "badge badge-device";
+      toast("Model perangkat siap.");
+    }
   } catch (err) {
     console.error(err);
     $("setupStatus").textContent =
@@ -422,7 +440,10 @@ async function onScan() {
       " Periksa dan koreksi sebelum disimpan.";
   } catch (err) {
     console.error(err);
+    // Tampilkan pesan error spesifik (mis. timeout 120 detik) bila ada —
+    // pesan generik "periksa koneksi" menyesatkan saat panggilan AI yang macet.
     $("scanStatus").textContent =
+      (err && err.message) ||
       "Gagal membaca struk. Periksa koneksi internetmu, lalu coba lagi — atau isi struk secara manual.";
   } finally {
     $("scanBtn").disabled = !configured;

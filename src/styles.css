@@ -207,7 +207,7 @@ input[type="file"] { width: 100%; margin: 0.3rem 0 0.6rem; font-size: 0.95rem; }
 .items-editor { display: flex; flex-direction: column; gap: 0.7rem; margin: 0.6rem 0; }
 .item-row {
   display: grid;
-  grid-template-columns: 1fr 64px;
+  grid-template-columns: 1fr 1fr 44px;
   gap: 0.5rem;
   padding: 0.7rem;
   background: var(--orange-soft);
@@ -215,7 +215,11 @@ input[type="file"] { width: 100%; margin: 0.3rem 0 0.6rem; font-size: 0.95rem; }
   border-radius: 10px;
 }
 .item-row .item-nama { grid-column: 1 / -1; min-height: 44px; }
-.item-row input { min-height: 44px; }
+.item-row .item-jumlah { grid-column: 1; }
+.item-row .item-harga { grid-column: 2; }
+.item-row .item-subtotal { grid-column: 1 / 3; }
+.item-row .item-del { grid-column: 3; grid-row: 2; }
+.item-row input { min-height: 44px; min-width: 0; }
 .item-del {
   min-height: 44px;
   border: 1px solid #e5b6b6;
@@ -367,5 +371,9 @@ input[type="file"] { width: 100%; margin: 0.3rem 0 0.6rem; font-size: 0.95rem; }
     align-items: center;
   }
   .item-row .item-nama { grid-column: auto; }
+  .item-row .item-jumlah,
+  .item-row .item-harga,
+  .item-row .item-subtotal,
+  .item-row .item-del { grid-column: auto; grid-row: auto; }
   .summary-grid { grid-template-columns: repeat(4, 1fr); }
 }
