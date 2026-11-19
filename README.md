@@ -35,18 +35,39 @@ bulan ini.
 ```bash
 npm install
 cp .env.example .env   # isi dengan Firebase config project kamu
-npm run dev
+npm run dev            # atau: npm run build && npm run preview
 ```
 
 Syarat on-device: **Chrome Desktop v139+**, flag
 `chrome://flags/#prompt-api-for-gemini-nano-multimodal-input` di-Enabled.
-Untuk local dev, App Check memakai debug provider — daftarkan debug token di
-Firebase console (Security > App Check > Apps > Manage debug tokens).
+Untuk local dev, App Check memakai debug provider — isi
+`VITE_FIREBASE_APPCHECK_DEBUG_TOKEN` di `.env` dengan token yang sudah
+terdaftar di Firebase console (Security > App Check > Apps > Manage debug
+tokens). Tanpa Firebase config, aplikasi tetap jalan penuh dalam **mode
+demo** (buku kas di IndexedDB, isi struk manual, jawaban lokal) — scan AI
+dan Q&A cloud butuh config.
 
-## Status
+## Status (20 Nov 2026)
 
-Scaffold awal — Firebase project & config menyusul. Lihat
-[`research-firebase-ai-logic.md`](../devpost-buildhybridai/research-firebase-ai-logic.md)
+Aplikasi v1 selesai dan teruji di mode demo + sebagian dengan config asli
+(project `strukku`, Spark gratis, Gemini Developer API):
+- Scan hybrid on-device/cloud, koreksi per baris, buku kas, laporan
+  (belanja/omzet/laba, kategori, anomali harga & duplikat), export CSV,
+  Q&A — semua jalan di mode demo (uji browser 23/24 + unit 29/29).
+- Dengan config asli: aplikasi terhubung ke Firebase tanpa error init;
+  model cloud yang menjawab adalah `gemini-3.5-flash-lite`.
+- **Belum terverifikasi di lingkungan ini:** scan AI dan Q&A cloud
+  end-to-end menggantung di VM ini (App Check `getToken()` tidak pernah
+  resolve walau exchange debug token HTTP 200; POST ke endpoint Google AI
+  stall di setup Brave headless + egress proxy). On-device juga
+  `unavailable` di Brave headless — aplikasi kini melaporkannya dengan
+  jujur, bukan mengklaim "siap". Uji di Chrome desktop/HP dengan jaringan
+  normal masih diperlukan sebelum demo/submit.
+- **Firestore rules masih terkunci** (`allow read, write: if false`):
+  sinkronisasi buku kas belum bisa jalan; app memakai IndexedDB lokal.
+  Buka rules via Firebase console (dengan App Check) sebelum submit.
+
+Lihat [`research-firebase-ai-logic.md`](../devpost-buildhybridai/research-firebase-ai-logic.md)
 di folder riset untuk detail SDK.
 
 ## Lisensi
