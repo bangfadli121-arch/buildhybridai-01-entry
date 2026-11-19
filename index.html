@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StrukKu — Buku Kas Warung dari Foto Struk</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+      .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.85rem; background: #eef; }
+      #status { margin: 1rem 0; color: #555; }
+      #result { white-space: pre-wrap; background: #f7f7f7; padding: 1rem; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>StrukKu</h1>
+    <p>Foto struk belanja kulakan — dibaca langsung di perangkatmu, jadi buku kas.</p>
+    <button id="setupBtn">1. Siapkan model perangkat</button>
+    <span id="setupStatus" class="badge">model belum disiapkan</span>
+    <p>
+      <input type="file" id="receiptInput" accept="image/jpeg,image/png" />
+      <button id="scanBtn">2. Scan struk</button>
+    </p>
+    <p id="status"></p>
+    <p>Sumber jawaban: <span id="sourceBadge" class="badge">—</span></p>
+    <pre id="result">Hasil ekstraksi struk akan tampil di sini.</pre>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
