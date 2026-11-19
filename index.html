@@ -3,26 +3,260 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="StrukKu — buku kas warung dari foto struk. Foto struk dibaca di perangkat, jadi laporan." />
     <title>StrukKu — Buku Kas Warung dari Foto Struk</title>
-    <style>
-      body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
-      .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.85rem; background: #eef; }
-      #status { margin: 1rem 0; color: #555; }
-      #result { white-space: pre-wrap; background: #f7f7f7; padding: 1rem; border-radius: 8px; }
-    </style>
+    <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
-    <h1>StrukKu</h1>
-    <p>Foto struk belanja kulakan — dibaca langsung di perangkatmu, jadi buku kas.</p>
-    <button id="setupBtn">1. Siapkan model perangkat</button>
-    <span id="setupStatus" class="badge">model belum disiapkan</span>
-    <p>
-      <input type="file" id="receiptInput" accept="image/jpeg,image/png" />
-      <button id="scanBtn">2. Scan struk</button>
-    </p>
-    <p id="status"></p>
-    <p>Sumber jawaban: <span id="sourceBadge" class="badge">—</span></p>
-    <pre id="result">Hasil ekstraksi struk akan tampil di sini.</pre>
+    <header class="app-header">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">🧾</span>
+        <div>
+          <h1>StrukKu</h1>
+          <p class="tagline">Buku kas warung dari foto struk</p>
+        </div>
+      </div>
+      <div class="status-bar">
+        <span id="modeBadge" class="badge badge-muted">Memeriksa konfigurasi…</span>
+        <span id="deviceBadge" class="badge badge-muted">Model perangkat: belum disiapkan</span>
+      </div>
+    </header>
+
+    <main id="app">
+      <!-- ============ TAB SCAN ============ -->
+      <section id="tab-scan" class="tab-panel" aria-label="Scan struk">
+        <div class="card">
+          <h2>Scan struk belanja</h2>
+          <p class="hint">
+            Foto struk kulakan dengan kamera HP. Struk dibaca langsung di perangkatmu
+            bila memungkinkan — data keuangan tidak perlu keluar dari HP untuk dibaca.
+          </p>
+
+          <button id="setupBtn" class="btn btn-secondary" type="button">
+            Siapkan model perangkat
+          </button>
+          <p id="setupStatus" class="status-text">Model perangkat belum disiapkan.</p>
+          <div id="setupProgressWrap" class="progress-wrap" hidden>
+            <div id="setupProgressBar" class="progress-bar" style="width: 0%"></div>
+            <span id="setupProgressText" class="progress-text">0%</span>
+          </div>
+
+          <div id="demoNotice" class="notice notice-demo" hidden>
+            <strong>Mode demo: AI butuh Firebase config</strong> — kamu tetap bisa
+            isi struk manual dan mencoba semua fitur buku kas, laporan, dan tanya jawab lokal.
+            <div class="row">
+              <button id="manualBtn" class="btn btn-primary" type="button">Isi manual</button>
+              <button id="sampleBtn" class="btn btn-secondary" type="button">Lihat contoh hasil scan</button>
+            </div>
+          </div>
+
+          <label class="file-label" for="receiptInput">Foto struk (JPEG/PNG)</label>
+          <input
+            type="file"
+            id="receiptInput"
+            accept="image/jpeg,image/png"
+            capture="environment"
+          />
+          <p id="fileInfo" class="status-text"></p>
+
+          <button id="scanBtn" class="btn btn-primary btn-big" type="button">
+            Scan struk
+          </button>
+          <p id="scanStatus" class="status-text" role="status"></p>
+          <p>Sumber jawaban: <span id="sourceBadge" class="badge badge-muted">—</span></p>
+        </div>
+
+        <div id="sampleNotice" class="notice notice-sample" hidden>
+          <strong>CONTOH — bukan hasil AI.</strong> Data di bawah ini hanya contoh
+          tampilan hasil scan, supaya kamu bisa mencoba form koreksi tanpa memotret struk.
+        </div>
+
+        <form id="correctionForm" class="card" hidden>
+          <h2>Periksa &amp; koreksi hasil scan</h2>
+          <p class="hint">Periksa setiap baris sebelum disimpan. Semua bisa diedit, dihapus, atau ditambah.</p>
+
+          <label for="corrToko">Nama toko</label>
+          <input type="text" id="corrToko" placeholder="cth: Toko Kelontong Sari" autocomplete="off" />
+
+          <div class="row two-col">
+            <div>
+              <label for="corrTanggal">Tanggal belanja</label>
+              <input type="date" id="corrTanggal" />
+            </div>
+            <div>
+              <label for="corrTotal">Total (Rp)</label>
+              <input type="number" id="corrTotal" min="0" step="1" inputmode="numeric" />
+            </div>
+          </div>
+
+          <p id="corrConfidenceWrap" class="status-text" hidden>
+            Keyakinan AI: <strong id="corrConfidence">—</strong>
+          </p>
+
+          <h3>Item belanja</h3>
+          <div id="itemsEditor" class="items-editor"></div>
+          <button id="addItemBtn" class="btn btn-secondary" type="button">+ Tambah item</button>
+
+          <div class="row">
+            <button id="saveReceiptBtn" class="btn btn-primary btn-big" type="submit">
+              Simpan ke buku kas
+            </button>
+            <button id="resetFormBtn" class="btn btn-ghost" type="button">Bersihkan</button>
+          </div>
+          <p id="saveStatus" class="status-text" role="status"></p>
+        </form>
+      </section>
+
+      <!-- ============ TAB BUKU KAS ============ -->
+      <section id="tab-kas" class="tab-panel" aria-label="Buku kas" hidden>
+        <div class="card">
+          <h2>Buku kas</h2>
+          <p class="hint">Semua struk belanja yang sudah disimpan.</p>
+          <div class="filter-row" role="group" aria-label="Filter periode">
+            <button class="btn btn-filter filter-btn" type="button" data-range="today">Hari ini</button>
+            <button class="btn btn-filter filter-btn" type="button" data-range="7">7 hari</button>
+            <button class="btn btn-filter filter-btn" type="button" data-range="30">30 hari</button>
+            <button class="btn btn-filter filter-btn active" type="button" data-range="all">Semua</button>
+          </div>
+        </div>
+
+        <p id="kasEmpty" class="empty-state" hidden>
+          Belum ada struk — foto struk pertamamu.
+        </p>
+        <ul id="receiptList" class="receipt-list"></ul>
+
+        <div id="receiptDetail" class="card" hidden>
+          <div class="row space-between">
+            <h2 id="detailTitle">Detail struk</h2>
+            <button id="detailCloseBtn" class="btn btn-ghost" type="button">Tutup</button>
+          </div>
+          <p id="detailMeta" class="status-text"></p>
+          <table class="detail-table">
+            <thead>
+              <tr><th>Item</th><th>Jml</th><th>Harga</th><th>Subtotal</th></tr>
+            </thead>
+            <tbody id="detailItems"></tbody>
+            <tfoot>
+              <tr><th colspan="3">Total</th><th id="detailTotal"></th></tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============ TAB LAPORAN ============ -->
+      <section id="tab-laporan" class="tab-panel" aria-label="Laporan" hidden>
+        <div class="card">
+          <h2>Laporan</h2>
+          <p class="hint">Ringkasan <span id="reportPeriodLabel">semua periode</span>.</p>
+          <div class="summary-grid">
+            <div class="summary-card">
+              <span class="summary-label">Total belanja</span>
+              <strong id="sumBelanja" class="summary-value">Rp0</strong>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">Total omzet</span>
+              <strong id="sumOmzet" class="summary-value">Rp0</strong>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">Laba</span>
+              <strong id="sumLaba" class="summary-value">Rp0</strong>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">Jumlah struk</span>
+              <strong id="sumCount" class="summary-value">0</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Belanja per kategori</h3>
+          <div id="categoryBreakdown" class="breakdown"></div>
+          <p id="categoryEmpty" class="empty-state">Belum ada data kategori.</p>
+        </div>
+
+        <div class="card">
+          <h3>Top 5 item paling boros</h3>
+          <ol id="topItems" class="top-list"></ol>
+          <p id="topEmpty" class="empty-state">Belum ada data item.</p>
+        </div>
+
+        <div class="card">
+          <h3>Anomali yang perlu dicek</h3>
+          <ul id="anomalyList" class="anomaly-list"></ul>
+          <p id="anomalyEmpty" class="empty-state">Tidak ada anomali terdeteksi. Bagus!</p>
+        </div>
+
+        <div class="card">
+          <h3>Catat omzet hari ini</h3>
+          <label for="omzetTanggal">Tanggal</label>
+          <input type="date" id="omzetTanggal" />
+          <label for="omzetJumlah">Omzet (Rp)</label>
+          <input type="number" id="omzetJumlah" min="0" step="1" inputmode="numeric" placeholder="cth: 500000" />
+          <button id="omzetBtn" class="btn btn-primary btn-big" type="button">Simpan omzet</button>
+          <p id="omzetStatus" class="status-text" role="status"></p>
+        </div>
+
+        <div class="card">
+          <h3>Export data</h3>
+          <p class="hint">Unduh semua struk pada periode laporan sebagai file CSV.</p>
+          <button id="exportCsvBtn" class="btn btn-secondary btn-big" type="button">
+            Export CSV
+          </button>
+          <p id="exportStatus" class="status-text" role="status"></p>
+        </div>
+      </section>
+
+      <!-- ============ TAB TANYA ============ -->
+      <section id="tab-tanya" class="tab-panel" aria-label="Tanya jawab" hidden>
+        <div class="card">
+          <h2>Tanya soal bukumu</h2>
+          <p class="hint">
+            Contoh: “Berapa total belanja gula bulan ini?” atau “Barang apa yang paling boros minggu ini?”
+          </p>
+          <p id="chatHint" class="status-text"></p>
+        </div>
+
+        <div id="chatHistory" class="chat-history" aria-live="polite"></div>
+        <p id="chatEmpty" class="empty-state">
+          Belum ada pertanyaan — coba tanya soal belanja atau omzetmu.
+        </p>
+
+        <form id="chatForm" class="card chat-form">
+          <label for="chatInput" class="sr-only">Pertanyaan</label>
+          <div class="row">
+            <input
+              type="text"
+              id="chatInput"
+              placeholder="Tulis pertanyaanmu…"
+              autocomplete="off"
+            />
+            <button id="chatSendBtn" class="btn btn-primary" type="submit">Kirim</button>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Navigasi utama">
+      <button class="nav-btn active" type="button" data-tab="scan">
+        <span class="nav-icon" aria-hidden="true">📷</span>
+        <span>Scan</span>
+      </button>
+      <button class="nav-btn" type="button" data-tab="kas">
+        <span class="nav-icon" aria-hidden="true">📒</span>
+        <span>Buku Kas</span>
+      </button>
+      <button class="nav-btn" type="button" data-tab="laporan">
+        <span class="nav-icon" aria-hidden="true">📊</span>
+        <span>Laporan</span>
+      </button>
+      <button class="nav-btn" type="button" data-tab="tanya">
+        <span class="nav-icon" aria-hidden="true">💬</span>
+        <span>Tanya</span>
+      </button>
+    </nav>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
