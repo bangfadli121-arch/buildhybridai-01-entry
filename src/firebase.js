@@ -5,7 +5,7 @@
 // sekali — aplikasi tetap jalan dalam mode "AI belum aktif" dan semua
 // getter mengembalikan null.
 import { initializeApp } from "firebase/app";
-import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 import { getAuth, signInAnonymously } from "firebase/auth";
 import { getAI, GoogleAIBackend } from "firebase/ai";
 import { getFirestore } from "firebase/firestore";
@@ -34,6 +34,11 @@ export const firebaseApp = isFirebaseConfigured ? initializeApp(firebaseConfig) 
 // console (daftarkan dulu di console sebelum dipakai). Dalam mode debug,
 // getToken() memakai jalur debug dan provider tidak pernah dipanggil —
 // jadi site key reCAPTCHA hanya dibutuhkan untuk produksi.
+//
+// Provider = reCAPTCHA ENTERPRISE (bukan v3 klasik): site key dibuat via
+// reCAPTCHA Enterprise API (key 6LegPiou...G7, didaftarkan ke App Check
+// recaptchaEnterpriseConfig 21 Nov 2026) karena kunci v3 klasik tidak bisa
+// dibuat lewat API. SDK memuat enterprise.js untuk provider ini.
 export let appCheck = null;
 if (isFirebaseConfigured) {
   const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
@@ -43,7 +48,7 @@ if (isFirebaseConfigured) {
   }
   if (siteKey || import.meta.env.DEV) {
     appCheck = initializeAppCheck(firebaseApp, {
-      provider: new ReCaptchaV3Provider(siteKey || "debug"),
+      provider: new ReCaptchaEnterpriseProvider(siteKey || "debug"),
       isTokenAutoRefreshEnabled: true,
     });
   } else {
